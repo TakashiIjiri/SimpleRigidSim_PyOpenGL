@@ -3,7 +3,6 @@
 # Render objects with OpenGL and glfw
 # Set timer by tkinter 
 
-
 import glfw
 import numpy as np
 import scipy.linalg
@@ -14,7 +13,7 @@ import tkinter.ttk as ttk
 
 from OpenGL.GL import *
 from OpenGL.GLU import *
-import OglForGlfw
+import GlfwWinManager
 import TMesh
 
 
@@ -42,7 +41,7 @@ class RigidBall:
     def get_rot_mat(self) :
         length = np.linalg.norm(self.rot)
         if  length > 0.0001:
-            rotmat = OglForGlfw.get_axisrot( length, self.rot/length )
+            rotmat = GlfwWinManager.get_axisrot( length, self.rot/length )
         else :
             rotmat = np.identity(3, np.float32)
         return rotmat
@@ -123,6 +122,8 @@ class EventManager:
         self.b_Lbtn = False
         self.b_Rbtn = False
         self.b_Mbtn = False
+        self.pre_pos = (0,0)
+
         # obj_idx, vtx_idx, pick_pos, draged_pos
         self.b_drag_object = [-1,-1, np.zeros(3, np.float32), np.zeros(3, np.float32)]
 
@@ -130,50 +131,51 @@ class EventManager:
                       RigidBall(1.2, np.array([2.,6.,0.]), np.array([0.,1.,1.])),
                       RigidBall(1.8, np.array([0.,2.,2.]), np.array([-1.,1.,0.]))]
 
-    def func_Ldown(self, point, ogl, window) :
+    def func_Ldown(self, point, glfw_manager) :
         self.b_Lbtn = True
-        ray_pos, ray_dir = ogl.get_cursor_ray(window.window, point)
+        ray_pos, ray_dir = glfw_manager.get_cursor_ray(point)
         for i, b in enumerate(self.balls) :
             pick_vid, pick_pos = b.pick(ray_pos, ray_dir)
             if  pick_vid != -1 :
                 self.b_drag_object = [i, pick_vid, pick_pos, pick_pos]
 
-        if self.b_drag_object[0] < 0 :
-            ogl.mouse_down_trans(point)
+        self.pre_pos = point
 
-
-    def func_Lup(self, point, ogl, window):
+    def func_Lup(self, point, glfw_manager):
         self.b_Lbtn = False
         self.b_drag_object = [-1,-1, np.zeros(3, np.float32)] # obj_idx, vtx_idx, pick_pos
-        ogl.mouse_up()
 
-    def func_Rdown(self, point, ogl, window):
+    def func_Rdown(self, point, glfw_manager):
         self.b_Rbtn = True
-        ogl.mouse_down_rot(point)
+        self.pre_pos = point
 
-    def func_Rup(self, point, ogl, window):
+    def func_Rup(self, point, glfw_manager):
         self.b_Rbtn = False
-        ogl.mouse_up()
 
-    def func_Mdown(self, point, ogl, window):
+    def func_Mdown(self, point, glfw_manager):
         self.b_Mbtn = True
-        ogl.mouse_down_zoom(point)
+        self.pre_pos = point
 
-    def func_Mup(self, point, ogl, window):
+    def func_Mup(self, point, glfw_manager):
         self.b_Mbtn = False
-        ogl.mouse_up()
 
-    def func_mouse_move(self, point, ogl, window):
+    def func_mouse_move(self, point, glfw_manager):
         if not (self.b_Lbtn or self.b_Rbtn or self.b_Mbtn) :
             return
 
         if self.b_drag_object[0] >= 0 :
-            ray_pos, ray_dir = ogl.get_cursor_ray(window.window, point)
+            ray_pos, ray_dir = glfw_manager.get_cursor_ray(point)
             depth = np.linalg.norm(ray_pos- self.b_drag_object[2])
             self.b_drag_object[3] = ray_pos + depth * ray_dir
         else:
-            ogl.mouse_move(point)
-            #window.display()
+            dx = point[0] - self.pre_pos[0]
+            dy = point[1] - self.pre_pos[1]
+            if self.b_Lbtn : glfw_manager.camera_trans(dx, dy)
+            if self.b_Mbtn : glfw_manager.camera_zoom (dx, dy)
+            if self.b_Rbtn : glfw_manager.camera_rot  (dx, dy)
+
+        self.pre_pos = point
+        
 
     def draw_floor(self):
         mate  = np.array([[0.2,0.2,0.2,0.5],
@@ -192,7 +194,7 @@ class EventManager:
         glEnd()
 
 
-    def func_draw_scene(self, ogl, window):
+    def func_draw_scene(self, glfw_manager):
         glEnable(GL_LIGHTING)
         self.draw_floor()
         for b in self.balls:
@@ -232,8 +234,8 @@ class MainDialog(ttk.Frame):
         #initialize glfw frames
         self.manager = EventManager()
 
-        #generate instance of GlfwMainWindow
-        self.mainwindow = OglForGlfw.GlfwMainWindow(
+        #generate instance of GlfwWinManager
+        self.glfw_manager = GlfwWinManager.GlfwWinManager(
             "Main Window", [800, 600], [100,100],
             self.manager.func_Ldown, self.manager.func_Lup,
             self.manager.func_Rdown, self.manager.func_Rup,
@@ -243,8 +245,8 @@ class MainDialog(ttk.Frame):
 
         # memo :  通常はイベント待ちをするけど それはtkinterのmainloopに任せる
         # memo : (今回はsimulatorなので，mainloopではなくon_timer)
-        #while not ( mainwindow.window_should_close()):
-        #    mainwindow.wait_events_timeout()
+        #while not ( glfw_manager.window_should_close()):
+        #    glfw_manager.wait_events_timeout()
 
         #initialize tkinter Frame
         self.root = root_
@@ -267,7 +269,7 @@ class MainDialog(ttk.Frame):
         self.label2.configure(text=time.strftime("%H:%M:%S  ") + tmp)
 
         self.manager.step()
-        self.mainwindow.display()
+        self.glfw_manager.display()
 
         self.root.after(10, self.on_timer)
 

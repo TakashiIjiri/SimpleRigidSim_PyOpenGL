@@ -284,6 +284,5 @@ class TMesh:
                 if d1 <= d2 and d1 <= d3 : pick_vid = p[0]
                 elif d2 <= d3 : pick_vid = p[1]
                 else : pick_vid = p[2]
-                print(pick_vid)
 
         return pick_vid, pick_pos
